@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>南坡小炒·点餐</title>
+    <style>
+        body { font-family: "PingFang SC", sans-serif; max-width: 420px; margin: 40px auto; background: #faf7f2; padding: 0 16px; }
+        h1 { text-align: center; }
+        .dish { display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; border-bottom: 1px dashed #ddd; }
+        .dish img { width: 48px; height: 48px; object-fit: cover; border-radius: 6px; vertical-align: middle; margin-right: 6px; }
+        .placeholder { display: inline-block; width: 48px; height: 48px; line-height: 48px; text-align: center; background: #eee; border-radius: 6px; margin-right: 6px; }
+        .price { color: #c0392b; font-weight: bold; }
+        button { width: 100%; padding: 12px; margin-top: 16px; font-size: 16px; background: #c0392b; color: #fff; border: none; border-radius: 6px; cursor: pointer; }
+        input[type=number] { width: 56px; }
+        pre { background: #333; color: #9f9; padding: 12px; border-radius: 6px; min-height: 48px; font-size: 12px; }
+    </style>
+</head>
+<body>
+<h1>🍜 南坡小炒</h1>
+
+<!-- 菜单区：页面打开后由 fetch(/menu) 填充 -->
+<div id="menu">菜单加载中…</div>
+
+<button onclick="order()">下单</button>
+<button onclick="loadOrders()" style="background:#555; margin-top:8px;">📖 翻账本（最近订单）</button>
+
+<!-- 小票区：展示 POST /order 的返回结果 -->
+<pre id="result">小票将显示在这里</pre>
+
+<!-- 账本区：展示 GET /order/list 的返回结果 -->
+<pre id="orders"></pre>
+
+<script>
+    // 第14课适配（第五次前后端联动）：/menu 从 Map{菜名:价格} 升级为 List<MenuVO>
+    // ——加了 imageUrl 后 Map 装不下了；有照片显示照片，没照片显示占位图标
+    fetch('/menu')
+        .then(resp => resp.json())
+        .then(result => {
+            let html = '';
+            result.data.forEach(dish => {
+                const img = dish.imageUrl
+                    ? `<img src="${dish.imageUrl}" alt="${dish.dishName}">`
+                    : `<span class="placeholder">🍽️</span>`;
+                html += `
+                <div class="dish">
+                    <span>${img} ${dish.dishName} <span class="price">￥${dish.price}</span></span>
+                    <span>数量 <input type="number" min="0" value="0" data-dish="${dish.dishName}"></span>
+                </div>`;
+            });
+            document.getElementById('menu').innerHTML = html;
+        });
+
+    // 点击下单：收集数量大于0的菜，POST /order 提交 JSON
+    function order() {
+        const dishList = [];
+        document.querySelectorAll('input[data-dish]').forEach(input => {
+            if (input.value > 0) {
+                dishList.push({ dishName: input.dataset.dish, count: Number(input.value) });
+            }
+        });
+        if (dishList.length === 0) {
+            alert('还没点菜呢');
+            return;
+        }
+        fetch('/order', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ dishList: dishList })
+        })
+        .then(resp => resp.json())
+        .then(result => {
+            // 第6课适配：后端统一异常处理后，业务错误也能拿到规范 JSON 了
+            // （第5课时点错菜还是 500 HTML 丑页，现在按 code 分流展示）
+            if (result.code === 200) {
+                document.getElementById('result').innerText = JSON.stringify(result, null, 2);
+            } else {
+                document.getElementById('result').innerText = '❌ ' + result.msg + '（code=' + result.code + '）';
+            }
+        })
+        .catch(() => {
+            // 点了不存在的菜：后端还是直接抛异常(第2课遗留)，返回的是 500 HTML 错误页，
+            // JSON 解析失败会走到这里——这个丑陋报错，第6课"统一异常处理"来修复
+            document.getElementById('result').innerText = '❌ 服务器开小差了（500）';
+        });
+    }
+
+    // 第12课：翻账本——分页查最近 5 笔订单（page 从 0 开始）
+    function loadOrders() {
+        fetch('/order/list?page=0&size=5')
+            .then(resp => resp.json())
+            .then(result => {
+                document.getElementById('orders').innerText = JSON.stringify(result, null, 2);
+            });
+    }
+</script>
+</body>
+</html>
